@@ -1,0 +1,80 @@
+Set up venv
+
+    py -3.12 -m venv venv
+    .\venv\Scripts\Activate.ps1
+    pip install -r requirements.txt
+
+
+
+Setup SAAM
+
+    (Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned) ; (& c:\grayson\saam\venv\Scripts\Activate.ps1)
+
+    pip install -r requirements.txt
+
+    python .\scripts\run_saam.py
+
+
+
+
+Setup GROK (webhook)
+
+    (Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned) ; (& c:\grayson\saam\venv\Scripts\Activate.ps1)
+
+    python .\scripts\start_webhook.py
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    PS C:\grayson\saam> git status
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   app/api/webhooks/jira_webhook.py
+        modified:   app/engine/evaluator.py
+        modified:   app/integrations/jira_client.py
+        modified:   db/database.py
+        modified:   db/db_models.py
+        modified:   main.py
+        modified:   requirements.txt
+        modified:   saam.db
+        modified:   saam_log.csv
+        modified:   scripts/run_saam.py
+        modified:   scripts/start_webhook.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        app/api/admin/
+        app/api/ingest/
+        app/api/model_inspection.py
+        app/api/perceptron_train.py
+        app/api/saam_dashboard.py
+        app/api/saam_output.py
+        app/api/training_template.py
+        app/engine/perceptron_predict.py
+        app/engine/perceptron_train.py
+        app/engine/signals.py
+        app/services/collaboration_score.py
+        app/services/jira_ingest.py
+        app/services/member_aggregation.py
+        app/services/saam_output.py
+        app/services/synthetic_sprint.py
+        models/
+        scripts/Setup SAAM.readme.txt
+        test_jira.json
+        tests/perceptron_training_test.py
+        tests/test_full_saam_pipeline.py
