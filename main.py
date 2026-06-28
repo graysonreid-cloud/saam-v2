@@ -26,6 +26,9 @@ app.include_router(team_summary_router, prefix="/api")
 from app.api.risk_trend import router as risk_trend_router
 app.include_router(risk_trend_router, prefix="/api")
 
+from app.api import interventions
+app.include_router(interventions.router)
+
 # ---------------------------------------------------------
 # Models
 # ---------------------------------------------------------

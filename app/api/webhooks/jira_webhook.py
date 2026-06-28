@@ -1,14 +1,13 @@
 from fastapi import APIRouter, Request as FastAPIRequest
 from sqlalchemy.orm import Session
+import numpy as np
+
 import uuid
 from datetime import datetime, timezone
 
 from db.database import SessionLocal
-from db.db_models import (
-    Request as SAAMRequest,
-    JiraUser, JiraIssue, JiraEvent,
-    TeamMember, TeamMemberInteraction
-)
+from db.db_models import Request as SAAMRequest, JiraUser, JiraIssue, JiraEvent, TeamMember, TeamMemberInteraction, InterventionQueue
+
 
 # SAAM v2 engine
 from app.saam.cues import extract_cues
@@ -16,7 +15,15 @@ from app.saam.features import build_feature_vector
 from app.saam.interventions import select_intervention
 from app.saam.model_loader import MODEL
 
-
+def sanitize(obj):
+    import numpy as np
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, dict):
+        return {k: sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize(v) for v in obj]
+    return obj
 router = APIRouter()
 
 
@@ -153,8 +160,27 @@ async def jira_webhook(request: FastAPIRequest):
         # -----------------------------------------------------
         cues = extract_cues(event_dict)
         features = build_feature_vector(cues)
-        risk_label = MODEL.predict(features)[0]
+
+        # Ensure risk_label is a real Python int
+        risk_label_raw = MODEL.predict(features)[0]
+        risk_label = int(risk_label_raw)
+
         intervention = select_intervention(risk_label, cues)
+
+
+
+        queue_entry = InterventionQueue(
+            id=str(uuid.uuid4()),
+            team_member_id=tm.id,
+            intervention_text=intervention.get("message"),
+            risk_label=risk_label,   
+            cues=cues,
+            created_at=datetime.now(timezone.utc),
+            sent_at=None
+        )
+
+        db.add(queue_entry)
+        db.commit()
 
         # -----------------------------------------------------
         # 7. Store behavioural signal
@@ -175,21 +201,16 @@ async def jira_webhook(request: FastAPIRequest):
         # 8. Return SAAM v2 output
         # -----------------------------------------------------
 
-        import numpy as np
 
         # Convert numpy scalar → Python int
         if isinstance(risk_label, np.generic):
-            risk_label = risk_label.item()
+            risk_label = sanitize(risk_label)
 
         # Convert any numpy values inside cues
-        cues = {k: (v.item() if isinstance(v, np.generic) else v) for k, v in cues.items()}
+        cues = sanitize(cues)
 
         # Convert any numpy values inside intervention
-        intervention = {
-            k: (v.item() if isinstance(v, np.generic) else v)
-            for k, v in intervention.items()
-        }
-
+        intervention = sanitize(intervention)
 
 
         return {
@@ -200,9 +221,13 @@ async def jira_webhook(request: FastAPIRequest):
             "intervention": intervention,
         }
 
+
     except Exception as e:
         db.rollback()
         raise e
 
     finally:
         db.close()
+
+
+

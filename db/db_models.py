@@ -1,11 +1,31 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import (
-    Column, String, Boolean, DateTime, JSON,
-    ForeignKey, Float
-)
+from datetime import datetime, timezone
+from sqlalchemy import Column, String, Integer, DateTime, JSON, ForeignKey, Text, Boolean, Float
+
 from sqlalchemy.orm import relationship
 from db.base import Base
+
+
+# ---------------------------------------------------------
+# InterventionQueue (pending interventions for MS Teams)
+# ---------------------------------------------------------
+
+class InterventionQueue(Base):
+    __tablename__ = "intervention_queue"
+
+    id = Column(String, primary_key=True)
+
+    # Required foreign key
+    team_member_id = Column(String, ForeignKey("team_members.id"), nullable=False)
+
+    # Relationship back to TeamMember
+    team_member = relationship("TeamMember", back_populates="interventions")
+
+    intervention_text = Column(Text)
+    risk_label = Column(Integer)
+    cues = Column(JSON)
+    created_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
+    sent_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # ---------------------------------------------------------
@@ -70,6 +90,9 @@ class TeamMember(Base):
     email = Column(String, nullable=True)
     role = Column(String, nullable=True)
     active = Column(Boolean, default=True)
+
+    # Relationship to InterventionQueue
+    interventions = relationship("InterventionQueue", back_populates="team_member")
 
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
 
