@@ -1,5 +1,6 @@
 # app/saam/cues.py
 
+from datetime import datetime, timedelta
 from app.engine.risk import compute_risk_score
 
 
@@ -9,7 +10,7 @@ def extract_cues(raw: dict) -> dict:
     """
 
     # -----------------------------------------------------
-    # Base behavioural cues
+    # Base behavioural cues (existing)
     # -----------------------------------------------------
     participation_level = raw.get("participation_level", 0)
     talktime_imbalance = raw.get("talktime_imbalance", 0)
@@ -52,7 +53,7 @@ def extract_cues(raw: dict) -> dict:
     }
 
     # -----------------------------------------------------
-    # Sprint context cues
+    # Sprint context cues (existing)
     # -----------------------------------------------------
     sprint = raw.get("sprint_context", {}) or {}
 
@@ -62,7 +63,51 @@ def extract_cues(raw: dict) -> dict:
     cues["time_in_status_days"] = sprint.get("time_in_status_days")
 
     # -----------------------------------------------------
-    # Compute risk score (final cue)
+    # NEW: Argumentative QA comment detection (Maria)
+    # -----------------------------------------------------
+    argumentative_keywords = [
+        "incorrect",
+        "disagree",
+        "does not meet",
+        "fix this properly",
+        "not acceptable",
+        "wrong approach",
+    ]
+
+    comment_body = ""
+    if raw.get("raw_payload"):
+        fields = raw["raw_payload"].get("fields", {})
+        comment_data = fields.get("comment", {})
+        if comment_data and comment_data.get("comments"):
+            comment_body = comment_data["comments"][-1].get("body", "").lower()
+
+    cues["argumentative_comment"] = any(
+        kw in comment_body for kw in argumentative_keywords
+    )
+
+    # -----------------------------------------------------
+    # NEW: Engagement variability (Grayson mood swings)
+    # -----------------------------------------------------
+    recent_events = raw.get("recent_events", [])
+
+    if recent_events:
+        cutoff = datetime.utcnow() - timedelta(hours=48)
+
+        recent_count = sum(
+            1 for ev in recent_events
+            if ev.get("timestamp")
+            and datetime.fromisoformat(ev["timestamp"]) > cutoff
+        )
+
+        # High variability if unusually high or low activity
+        cues["engagement_variability"] = (
+            recent_count < 2 or recent_count > 10
+        )
+    else:
+        cues["engagement_variability"] = False
+
+    # -----------------------------------------------------
+    # Compute risk score (existing)
     # -----------------------------------------------------
     cues["risk_score"] = compute_risk_score(cues)
 

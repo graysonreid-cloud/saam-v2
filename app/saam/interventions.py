@@ -1,4 +1,5 @@
 # app/saam/interventions.py
+from app.saam.templates import select_template
 
 INTERVENTION_MATRIX = {
     "silent": {
@@ -60,6 +61,7 @@ def format_role_message(role: str) -> str:
     role_key = role.lower().replace(" ", "_")
     return ROLE_MESSAGES.get(role_key, "No role-specific guidance available.")
 
+
 # ---------------------------------------------------------
 # Team grouping formatter
 # ---------------------------------------------------------
@@ -112,29 +114,63 @@ def compute_sentiment_score(cues: dict) -> float:
     if cues.get("recent_activity_drop"):
         score += 0.2
 
+    # NEW: argumentative tone increases pressure
+    if cues.get("argumentative_comment"):
+        score += 0.15
+
+    # NEW: mood variability increases pressure
+    if cues.get("engagement_variability"):
+        score += 0.10
+
     # Clamp between 0 and 1
     return round(min(score, 1.0), 3)
 
 
 # ---------------------------------------------------------
-# Main intervention selector
+# Persona-aware messaging (NEW)
+# ---------------------------------------------------------
+
+PERSONA_MESSAGES = {
+    "Eoin": "Your throughput is strong — keep maintaining clarity across transitions.",
+    "Joe Bloggs": "If anything feels unclear or overwhelming, a quick sync could help.",
+    "Maria": (
+        "Your attention to detail is valuable. "
+        "Let’s channel that into constructive alignment with the team."
+    ),
+    "Jane": (
+        "If you're stuck or unsure, sharing even a small update can help unblock progress."
+    ),
+    "Grayson Reid": (
+        "Your engagement varies — if today feels like a low‑energy day, "
+        "a brief check‑in might help regain momentum."
+    ),
+}
+
+
+def persona_specific_message(cues: dict) -> str:
+    persona = cues.get("user")
+    return PERSONA_MESSAGES.get(persona, "")
+
+
+# ---------------------------------------------------------
+# Main intervention selector (UPDATED)
 # ---------------------------------------------------------
 
 def select_intervention(label: str, cues: dict) -> dict:
     """
-    Risk-aware + role-aware + cue-aware + sentiment-aware + team-aware intervention selection.
+    Risk-aware + role-aware + cue-aware + sentiment-aware + persona-aware + team-aware intervention selection.
     """
 
     risk = cues.get("risk_score", 0)
     sprint_progress = cues.get("sprint_progress")
     role = cues.get("role")
-    team_group = cues.get("team_group")  # NEW
+    team_group = cues.get("team_group")
 
     cue_breakdown = format_cue_breakdown(cues)
     role_message = format_role_message(role)
     sentiment_score = compute_sentiment_score(cues)
     team_group_label = format_team_group(team_group)
-
+    persona_message = select_template(cues.get("user"), label, cues)
     # ---------------------------------------------------------
     # 1. High-risk override
     # ---------------------------------------------------------
@@ -144,6 +180,7 @@ def select_intervention(label: str, cues: dict) -> dict:
             "action": "highlight_risk",
             "message": (
                 "This issue shows several risk indicators. It may need attention.\n\n"
+                f"{persona_message}\n\n"
                 f"Team: {team_group_label}\n\n"
                 f"Coaching: {COACHING_MESSAGES[2]}\n\n"
                 f"Role Guidance: {role_message}\n\n"
@@ -161,6 +198,7 @@ def select_intervention(label: str, cues: dict) -> dict:
             "action": "invite_contribution",
             "message": (
                 "There are some signs of risk. Could you share an update when possible?\n\n"
+                f"{persona_message}\n\n"
                 f"Team: {team_group_label}\n\n"
                 f"Coaching: {COACHING_MESSAGES[1]}\n\n"
                 f"Role Guidance: {role_message}\n\n"
@@ -184,14 +222,11 @@ def select_intervention(label: str, cues: dict) -> dict:
     message = (
         prefix + base["message"] +
         "\n\n" +
-        f"Team: {team_group_label}" +
-        "\n\n" +
-        f"Coaching: {COACHING_MESSAGES[0]}" +
-        "\n\n" +
-        f"Role Guidance: {role_message}" +
-        "\n\n" +
-        f"Cues: {cue_breakdown}" +
-        "\n\n" +
+        f"{persona_message}\n\n"
+        f"Team: {team_group_label}\n\n"
+        f"Coaching: {COACHING_MESSAGES[0]}\n\n"
+        f"Role Guidance: {role_message}\n\n"
+        f"Cues: {cue_breakdown}\n\n"
         f"Sentiment Score: {sentiment_score}"
     )
 

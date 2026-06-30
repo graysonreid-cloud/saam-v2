@@ -1,3 +1,5 @@
+# app/api/webhooks/jira_webhook.py
+
 from fastapi import APIRouter, Request as FastAPIRequest
 from sqlalchemy.orm import Session
 import numpy as np
@@ -213,7 +215,6 @@ async def jira_webhook(request: FastAPIRequest):
             ml_persona_label = "blocked"
 
         persona_label = ml_persona_label
-
         override_reason = None
 
         if event_dict.get("is_blocker", False):
@@ -260,7 +261,7 @@ async def jira_webhook(request: FastAPIRequest):
         cues.update(stats)
 
         # -----------------------------------------------------
-        # 8. Generate intervention
+        # 8. Generate intervention (UPDATED)
         # -----------------------------------------------------
         intervention = select_intervention(persona_label, cues)
 
@@ -298,14 +299,24 @@ async def jira_webhook(request: FastAPIRequest):
         db.commit()
 
         # -----------------------------------------------------
-        # 11. Self‑labelling (NOW INSIDE THE TRY BLOCK)
+        # 11. Self‑labelling (UPDATED FOR REAL PERSONAS)
         # -----------------------------------------------------
         comments = cues.get("comment_count", 0) or event_dict.get("team_comment_count", 0)
         assignments = cues.get("assignment_count", 0)
         transitions = cues.get("status_transition_count", 0)
 
+        persona_to_generic = {
+            "Eoin": "healthy",
+            "Joe Bloggs": "silent",
+            "Maria": "blocked",
+            "Jane": "blocked",
+            "Grayson Reid": "silent",
+        }
+
+        generic_label = persona_to_generic.get(display_name, persona_label)
+
         label_map = {"silent": 0, "healthy": 1, "blocked": 2}
-        label = label_map.get(persona_label, 0)
+        label = label_map.get(generic_label, 0)
 
         training_sample = TrainingSample(
             id=str(uuid.uuid4()),
@@ -321,7 +332,7 @@ async def jira_webhook(request: FastAPIRequest):
         db.add(training_sample)
         db.commit()
 
-        print(">>> TRAINING SAMPLE STORED <<<")
+        print(">>> TRAINING SAMPLE STORED (REAL PERSONA MAPPING) <<<")
 
         # -----------------------------------------------------
         # 12. Return SAAM v2 output

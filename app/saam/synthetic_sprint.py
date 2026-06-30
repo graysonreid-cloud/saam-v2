@@ -23,31 +23,58 @@ REAL_ACCOUNT_ID_MAP = {
     "Grayson Reid": "600f0f733b1af0006981af5f",
 }
 
-# Personas tuned for realistic Jira behaviour
+# Personas tuned for realistic Jira behaviour (REAL USERS)
 PERSONAS = {
-    "healthy": {
-        "event_volume": (10, 20),
-        "comment_prob": 0.30,
-        "transition_prob": 0.40,
+    # 1. Eoin — Senior Developer, High Throughput, Low Chatter
+    "Eoin": {
+        "event_volume": (45, 70),
+        "comment_prob": 0.10,
+        "transition_prob": 0.75,
         "assignment_prob": 0.20,
         "blocker_prob": 0.05,
         "silence_prob": 0.05,
     },
-    "silent": {
-        "event_volume": (2, 6),
-        "comment_prob": 0.05,
-        "transition_prob": 0.10,
-        "assignment_prob": 0.05,
-        "blocker_prob": 0.02,
-        "silence_prob": 0.60,
+
+    # 2. Joe Bloggs — Mid-Level Dev, Steady but Sometimes Overwhelmed
+    "Joe Bloggs": {
+        "event_volume": (25, 40),
+        "comment_prob": 0.35,
+        "transition_prob": 0.40,
+        "assignment_prob": 0.15,
+        "blocker_prob": 0.10,
+        "silence_prob": 0.20,
     },
-    "blocked": {
-        "event_volume": (12, 25),
-        "comment_prob": 0.20,
-        "transition_prob": 0.60,
+
+    # 3. Maria — Senior QA, Hyper-Confident, Argument-Prone
+    "Maria": {
+        "event_volume": (35, 55),
+        "comment_prob": 0.75,
+        "transition_prob": 0.30,
         "assignment_prob": 0.10,
-        "blocker_prob": 0.40,
+        "blocker_prob": 0.15,
         "silence_prob": 0.10,
+        "argument_comment_prob": 0.40,
+    },
+
+    # 4. Jane — Junior Dev, Quiet, Frequently Needs Help
+    "Jane": {
+        "event_volume": (10, 18),
+        "comment_prob": 0.25,
+        "transition_prob": 0.20,
+        "assignment_prob": 0.05,
+        "blocker_prob": 0.20,
+        "silence_prob": 0.35,
+    },
+
+    # 5. Grayson Reid — Developer with Mood-Driven Engagement
+    "Grayson Reid": {
+        "event_volume": (20, 45),
+        "comment_prob": 0.35,  # baseline, overridden by mood
+        "transition_prob": 0.30,
+        "assignment_prob": 0.10,
+        "blocker_prob": 0.15,
+        "silence_prob": 0.20,
+        "mood_cycle_days": (2, 4),
     },
 }
 
@@ -187,12 +214,11 @@ def generate_synthetic_sprint(db: Session, days: int = 10):
         members = db.query(TeamMember).all()
 
     # -----------------------------------------------------
-    # Assign personas
+    # Assign personas (REAL USERS → REAL PERSONAS)
     # -----------------------------------------------------
     persona_map = {}
-    persona_choices = ["healthy", "silent", "blocked"]
     for member in members:
-        persona_map[member.id] = random.choice(persona_choices)
+        persona_map[member.id] = member.display_name
 
     # -----------------------------------------------------
     # Create synthetic issues (IDEMPOTENT)
@@ -201,7 +227,6 @@ def generate_synthetic_sprint(db: Session, days: int = 10):
     for i in range(5):
         issue_key = f"SAAM-SYNTH-{i+1}"
 
-        # ⭐ IDEMPOTENCE FIX — skip if issue already exists
         existing = (
             db.query(JiraIssue)
             .filter(JiraIssue.issue_key == issue_key)
@@ -234,6 +259,37 @@ def generate_synthetic_sprint(db: Session, days: int = 10):
 
     for member in members:
         persona = PERSONAS[persona_map[member.id]]
+
+        # --- Mood-driven behaviour (Grayson) ---
+        if persona_map[member.id] == "Grayson Reid":
+            cycle = random.randint(*persona["mood_cycle_days"])
+            mood_roll = random.random()
+
+            if mood_roll < 0.35:   # high-energy
+                persona["comment_prob"] = 0.60
+                persona["silence_prob"] = 0.05
+                persona["blocker_prob"] = 0.05
+            elif mood_roll < 0.75: # neutral
+                persona["comment_prob"] = 0.35
+                persona["silence_prob"] = 0.20
+                persona["blocker_prob"] = 0.15
+            else:                  # low-energy
+                persona["comment_prob"] = 0.15
+                persona["silence_prob"] = 0.35
+                persona["blocker_prob"] = 0.25
+
+        # --- Argumentative QA (Maria) ---
+        if persona_map[member.id] == "Maria":
+            if random.random() < persona["argument_comment_prob"]:
+                NORMAL_COMMENTS.append(
+                    random.choice([
+                        "This implementation is incorrect.",
+                        "We need to fix this properly.",
+                        "This does not meet the test requirements.",
+                        "I strongly disagree with this approach.",
+                    ])
+                )
+
         min_events, max_events = persona["event_volume"]
         member_event_count = random.randint(min_events, max_events)
 
@@ -264,20 +320,27 @@ def generate_synthetic_sprint(db: Session, days: int = 10):
     db.commit()
 
     # -----------------------------------------------------
-    # Seed InterventionQueue with persona-based messages
+    # Seed InterventionQueue with GENERIC persona-based messages
     # -----------------------------------------------------
     for member in members:
         persona_key = persona_map[member.id]
 
-        if persona_key == "healthy":
+        # Map real personas → generic risk labels
+        if persona_key == "Eoin":
             risk_label = "healthy"
             intervention_text = "Great engagement and steady progress."
-        elif persona_key == "silent":
+        elif persona_key == "Joe Bloggs":
             risk_label = "silent"
             intervention_text = "Not much activity recently — consider sharing updates."
-        else:
+        elif persona_key == "Maria":
             risk_label = "blocked"
             intervention_text = "Looks like you're stuck — let's unblock this together."
+        elif persona_key == "Jane":
+            risk_label = "blocked"
+            intervention_text = "Looks like you're stuck — let's unblock this together."
+        else:  # Grayson Reid
+            risk_label = "silent"
+            intervention_text = "Not much activity recently — consider sharing updates."
 
         cues = {"persona": persona_key}
 
