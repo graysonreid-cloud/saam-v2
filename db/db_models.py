@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, DateTime, JSON, ForeignKey, Text, Boolean, Float
-
 from sqlalchemy.orm import relationship
 from db.base import Base
 
@@ -15,17 +14,18 @@ class InterventionQueue(Base):
 
     id = Column(String, primary_key=True)
 
-    # Required foreign key
     team_member_id = Column(String, ForeignKey("team_members.id"), nullable=False)
-
-    # Relationship back to TeamMember
     team_member = relationship("TeamMember", back_populates="interventions")
 
     intervention_text = Column(Text)
     risk_label = Column(Integer)
     cues = Column(JSON)
+
     created_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
     sent_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # ---------------------------------------------------------
@@ -91,7 +91,6 @@ class TeamMember(Base):
     role = Column(String, nullable=True)
     active = Column(Boolean, default=True)
 
-    # Relationship to InterventionQueue
     interventions = relationship("InterventionQueue", back_populates="team_member")
 
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
@@ -156,15 +155,54 @@ class TeamMemberInteraction(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
+    # FIXED foreign keys
     team_member_id = Column(String, ForeignKey("team_members.id"), nullable=False)
     jira_event_id = Column(String, ForeignKey("jira_events.id"), nullable=False)
 
     signal_type = Column(String, nullable=False)
-    weight = Column(Float, nullable=False)
-
+    weight = Column(Float, nullable=True)
     event_metadata = Column(JSON, nullable=True)
+    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow)
 
-    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    # SAAM cue fields
+    risk_score = Column(Float, nullable=True)
+    workload_ratio = Column(Float, nullable=True)
+    recent_activity_drop = Column(Boolean, nullable=True)
+    blocker_age = Column(Integer, nullable=True)
+    role = Column(String, nullable=True)
+    team_group = Column(String, nullable=True)
+    sprint_progress = Column(Float, nullable=True)
 
+    # Relationships
     team_member = relationship("TeamMember", back_populates="behaviour_signals")
     jira_event = relationship("JiraEvent")
+
+
+
+class TrainingSample(Base):
+    __tablename__ = "training_samples"
+
+    id = Column(String, primary_key=True)
+    team_member_id = Column(String, ForeignKey("team_members.id"))
+    issue_id = Column(String, ForeignKey("jira_issues.id"))
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    # Original 3 features
+    comments = Column(Integer, default=0)
+    assignments = Column(Integer, default=0)
+    transitions = Column(Integer, default=0)
+
+    # SAAM v2 behavioural features (12‑feature vector)
+    silence_days = Column(Float, default=0.0)
+    blocker_count = Column(Integer, default=0)
+    churn_rate = Column(Float, default=0.0)
+    sentiment_score = Column(Float, default=0.0)
+    workload_ratio = Column(Float, default=0.0)
+    help_requests = Column(Integer, default=0)
+    help_offers = Column(Integer, default=0)
+    talktime_imbalance = Column(Float, default=0.0)
+    participation_level = Column(Float, default=0.0)
+
+    # Label (0,1,2)
+    label = Column(Integer, default=0)
+

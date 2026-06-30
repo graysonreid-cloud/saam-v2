@@ -1,52 +1,76 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
-from typing import List, Dict, Any
+# app/saam/train.py
 
-from app.engine.perceptron_train import train_perceptron
-from app.saam.features import FEATURE_ORDER
+import numpy as np
+import joblib
+import os
+from sqlalchemy.orm import Session
+from db.database import SessionLocal
+from db.db_models import TrainingSample
+from sklearn.linear_model import Perceptron
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 
-router = APIRouter()
+# ---------------------------------------------------------
+# SAAM v2 — Retrain model using real Jira interactions
+# ---------------------------------------------------------
 
-class TrainingRow(BaseModel):
-    user_id: str
-    features: Dict[str, Any]   # must match FEATURE_ORDER
-    label: int                 # 0 = silent, 1 = healthy, 2 = blocked
+def load_training_data():
+    db: Session = SessionLocal()
+    samples = db.query(TrainingSample).all()
+    db.close()
 
-class TrainingPayload(BaseModel):
-    data: List[TrainingRow]
+    if not samples:
+        raise ValueError("No training samples found. Trigger Jira events first.")
 
-@router.post("/saam/train")
-def train_perceptron_endpoint(payload: TrainingPayload):
-    """
-    Retrains the perceptron model using the provided dataset.
-    Expects:
-      - features in FEATURE_ORDER
-      - labels: 0=silent, 1=healthy, 2=blocked
-    """
+    X = []
+    y = []
 
-    dataset = []
+    for s in samples:
+        X.append([
+            s.comments,
+            s.assignments,
+            s.transitions,
 
-    for row in payload.data:
-        # Validate feature completeness
-        missing = [f for f in FEATURE_ORDER if f not in row.features]
-        if missing:
-            return {
-                "status": "error",
-                "message": f"Missing features: {missing}"
-            }
+            # NEW: SAAM v2 behavioural features (must match runtime)
+            s.silence_days or 0,
+            s.blocker_count or 0,
+            s.churn_rate or 0,
+            s.sentiment_score or 0,
+            s.workload_ratio or 0,
+            s.help_requests or 0,
+            s.help_offers or 0,
+            s.talktime_imbalance or 0,
+            s.participation_level or 0,
+        ])
 
-        dataset.append({
-            "user_id": row.user_id,
-            "features": [row.features[f] for f in FEATURE_ORDER],
-            "label": row.label
-        })
+        y.append(s.label)
 
-    # Train model using the correct function
-    train_perceptron(dataset)
+    return np.array(X), np.array(y)
 
-    return {
-        "status": "ok",
-        "message": "Perceptron model retrained.",
-        "feature_order": FEATURE_ORDER,
-        "count": len(dataset)
-    }
+
+def train_saam_model():
+    print("Loading training samples...")
+    X, y = load_training_data()
+
+    print(f"Training on {len(X)} samples with {X.shape[1]} features...")
+
+    # Must have at least 2 classes
+    if len(set(y)) < 2:
+        raise ValueError("Need at least 2 different persona labels before training.")
+
+    model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", Perceptron(max_iter=2000, tol=1e-3))
+    ])
+
+    model.fit(X, y)
+
+    os.makedirs("models", exist_ok=True)
+    joblib.dump({"model": model}, "models/perceptron.pkl")
+
+    print("Model saved to models/perceptron.pkl")
+    print("Training complete.")
+
+
+if __name__ == "__main__":
+    train_saam_model()

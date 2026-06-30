@@ -1,3 +1,5 @@
+# app/saam/jira_adapter.py
+
 from datetime import datetime, timezone
 
 
@@ -99,7 +101,15 @@ def jira_to_stats(events: list[dict]) -> dict:
     def days_since(dt):
         if not dt:
             return None
+
+        # FIX: ensure dt is timezone-aware
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
         return max((now - dt).days, 0)
+
+
+
 
     stats["time_since_last_event_days"] = days_since(stats["last_event_ts"])
     stats["time_since_last_comment_days"] = days_since(stats["last_comment_ts"])

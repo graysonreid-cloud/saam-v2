@@ -14,6 +14,7 @@ router = APIRouter()
 # Load model once (performance)
 MODEL = joblib.load("models/perceptron.pkl")["model"]
 
+
 @router.post("/saam/action")
 def saam_action(raw_stats: dict):
     """

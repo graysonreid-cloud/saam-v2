@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from db.db_models import TeamMemberInteraction
+from db.db_models import JiraIssue
 from app.saam.synthetic_sprint import generate_synthetic_sprint
 from db.database import SessionLocal
 
@@ -46,13 +46,18 @@ class TeamState(BaseModel):
 @app.on_event("startup")
 def populate_if_empty():
     db = SessionLocal()
-    count = db.query(TeamMemberInteraction).count()
 
-    if count == 0:
+    # Correct table to check — synthetic sprint inserts JiraIssue rows
+    issue_count = db.query(JiraIssue).count()
+
+    if issue_count == 0:
         print("SAAM: Empty DB detected — generating synthetic sprint...")
         generate_synthetic_sprint(db)
     else:
         print("SAAM: Existing data detected — skipping synthetic sprint.")
+
+    db.close()
+
 
 # ---------------------------------------------------------
 # Health Check
